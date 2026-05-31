@@ -5,10 +5,12 @@ import { setTimeout as wait } from 'node:timers/promises';
 import http from 'node:http';
 
 test('idempotency returns same resource for same key', async () => {
-  const proc = spawn('node', ['src/server.js'], { env: { ...process.env, API_KEY: 'k', PORT: '9091' } });
+  const port = 9000 + Math.floor(Math.random() * 1000);
+  const apiKey = `test-key-${Math.random().toString(36).slice(2)}`;
+  const proc = spawn('node', ['src/server.js'], { env: { ...process.env, API_KEY: apiKey, PORT: String(port) } });
   await wait(300);
 
-  const base = 'http://localhost:9091';
+  const base = `http://localhost:${port}`;
   const idem = 'same-key';
 
   const a = await postJson(`${base}/v1/signals`, {

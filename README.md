@@ -1,34 +1,63 @@
 # Signals Challenge (Node.js + Fastify)
 
-Build a minimal production-leaning service that can **handle load**, **rate limit**, and **avoid duplicates** via idempotency.
+A production-leaning ingestion API that handles load, enforces per-user rate limits, and prevents duplicate signals using atomic idempotency.
 
-## Endpoints (to keep)
+## Endpoints
+
 - `POST /v1/signals`
   - body: `{ "userId": "string", "type": "string", "payload": "string" }`
-  - headers: `X-API-Key`, `Idempotency-Key` (optional)
+  - headers: `X-API-Key` (required), `Idempotency-Key` (optional)
   - behaviors:
-    - **Rate limit** per `userId`: `RATE_LIMIT_PER_MIN` per minute (default 5).
-    - **Idempotency**: same `Idempotency-Key` should not create duplicates.
+    - Rate limit per `userId`: `RATE_LIMIT_PER_MIN` per minute (default `5`)
+    - Atomic idempotency when `Idempotency-Key` is present
 - `GET /v1/signals?userId=...&limit=...`
 - `GET /healthz`
 
-## Your Tasks
-1. **Implement a robust rate limiter** in `src/rateLimit.js`.
-2. **Make idempotency safe across scale** in `src/signals.js`.
-3. **Handle DB failure** gracefully with retry/backoff.
-4. **Think for 10k RPS.** Add a `SCALE.md`.
-5. **Finish the tests** in `tests/*.test.js`.
+## Getting Started
 
-## Deliverables
-- Working service, passing tests, updated README, SCALE.md.
-- Optional deploy link.
+```bash
+npm install
+node src/server.js
+```
+
+## Environment Variables
+
+- `API_KEY` — required API key for `X-API-Key` (no default)
+- `RATE_LIMIT_PER_MIN` — requests per user per minute (default `5`)
+- `DB_FAIL_RATE` — simulate transient DB failures (`0` by default)
+- `DATABASE_URL` — optional SQLite path or DB connection string (`./data/signals.db` by default)
+- `PORT` — server port (default `8080`)
+
+## Implementation Highlights
+
+### Atomic Idempotency
+
+`POST /v1/signals` uses SQLite's `ON CONFLICT(idempotency_key) DO NOTHING` atomic upsert. Repeated requests with the same `Idempotency-Key` return the original signal and never create duplicates.
+
+### Concurrency-Safe Rate Limiting
+
+Rate limiting is implemented in `src/rateLimit.js` with a DB-backed window counter. Updates are applied with a single atomic UPSERT transaction in `rate_limits`, preventing races under burst and parallel requests.
+
+### DB Retry / Backoff
+
+Transient DB failures are retried with exponential backoff and full jitter in `src/retry.js`. The idempotency guard ensures these retries do not create duplicate records.
+
+### Health Check
+
+`GET /healthz` verifies DB connectivity using a lightweight query.
+
 ---
 
-## Extra Production Constraints (must pass)
+## Testing
 
-- **Atomic Idempotency:** Survive concurrent requests and restarts. Avoid check-then-insert races; use a DB-level unique constraint or atomic upsert pattern. Return the same resource for identical `Idempotency-Key`.
-- **Concurrency-Safe Rate Limit:** Must behave correctly under burst and parallel calls. Naive in-memory counters that race will fail hidden checks. Explain how this becomes multi-instance safe.
-- **Transient DB Failures:** Implement retry/backoff (with jitter) or circuit breaker when DB errors occur (we simulate via `DB_FAIL_RATE`). No duplicates on retry.
-- **Scale Plan (10k RPS):** Fill `SCALE.md` with a clear, concise approach (indexes, pooling, caching, queues, horizontal scale, idempotency store).
+```bash
+npm test
+```
 
-> We will run additional **hidden concurrency/multi-instance tests** during evaluation.
+The test suite covers:
+
+- concurrent idempotent ingestion
+- distinct signal creation without `Idempotency-Key`
+- rate limiting and 429 behavior
+- auth enforcement
+- health endpoint

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server.js",
-    "test": "node --test",
+    "test": "node --test tests/idempotency.test.js tests/rate-limit.test.js",
     "bench": "npx autocannon -c 20 -d 10 -p 3 http://localhost:8080/healthz",
     "fmt": "npx prettier -w ."
   },
